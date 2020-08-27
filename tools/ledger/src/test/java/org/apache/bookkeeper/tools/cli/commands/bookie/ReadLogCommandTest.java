@@ -22,8 +22,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.powermock.api.mockito.PowerMockito.doNothing;
 
-import org.apache.bookkeeper.bookie.EntryLogger;
 import org.apache.bookkeeper.bookie.ReadOnlyEntryLogger;
+import org.apache.bookkeeper.bookie.storage.EntryLogScanner;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.tools.cli.helpers.BookieCommandTestBase;
 import org.junit.Assert;
@@ -45,7 +45,7 @@ public class ReadLogCommandTest extends BookieCommandTestBase {
     private ReadOnlyEntryLogger entryLogger;
 
     @Mock
-    private EntryLogger.EntryLogScanner entryLogScanner;
+    private EntryLogScanner entryLogScanner;
 
     public ReadLogCommandTest() {
         super(3, 0);

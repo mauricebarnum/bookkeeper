@@ -41,6 +41,7 @@ import lombok.Getter;
 import org.apache.bookkeeper.bookie.BookieException.EntryLogMetadataMapException;
 import org.apache.bookkeeper.bookie.GarbageCollector.GarbageCleaner;
 import org.apache.bookkeeper.bookie.stats.GarbageCollectorStats;
+import org.apache.bookkeeper.bookie.storage.EntryLoggerIface;
 import org.apache.bookkeeper.bookie.storage.ldb.PersistentEntryLogMetadataMap;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.meta.LedgerManager;
@@ -88,7 +89,7 @@ public class GarbageCollectorThread extends SafeRunnable {
     final boolean isForceGCAllowWhenNoSpace;
 
     // Entry Logger Handle
-    final EntryLogger entryLogger;
+    final EntryLoggerIface entryLogger;
     final AbstractLogCompactor compactor;
 
     // Stats loggers for garbage collection operations
@@ -211,7 +212,8 @@ public class GarbageCollectorThread extends SafeRunnable {
             }
         };
         if (conf.getUseTransactionalCompaction()) {
-            this.compactor = new TransactionalEntryLogCompactor(conf, entryLogger, ledgerStorage, remover);
+            this.compactor = new TransactionalEntryLogCompactor(conf, entryLogger, ledgerStorage,
+                    ledgerDirsManager, remover);
         } else {
             this.compactor = new EntryLogCompactor(conf, entryLogger, ledgerStorage, remover);
         }
