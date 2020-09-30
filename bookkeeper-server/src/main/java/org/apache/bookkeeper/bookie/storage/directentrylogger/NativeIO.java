@@ -21,37 +21,36 @@
 package org.apache.bookkeeper.bookie.storage.directentrylogger;
 
 import com.sun.jna.LastErrorException;
-import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.PointerByReference;
 
 /**
  * NativeIO.
  */
-public class NativeIO {
-    static {
-        Native.register("c");
-    }
+public interface NativeIO {
+    int O_CREAT = 0100;
+    int O_RDONLY = 00;
+    int O_WRONLY = 01;
+    int O_TRUNC = 01000;
+    int O_DIRECT = 040000;
+    int O_DSYNC = 010000;
 
-    static final int O_CREAT = 0100;
-    static final int O_RDONLY = 00;
-    static final int O_WRONLY = 01;
-    static final int O_TRUNC = 01000;
-    static final int O_DIRECT = 040000;
-    static final int O_DSYNC = 010000;
+    int SEEK_SET = 0;
+    int SEEK_END = 2;
 
-    static final int SEEK_SET = 0;
-    static final int SEEK_END = 2;
+    int FALLOC_FL_ZERO_RANGE = 0x10;
 
-    static final int FALLOC_FL_ZERO_RANGE = 0x10;
-
-    native int open(String pathname, int flags, int mode);
-    native int posix_fallocate(int fd, long offset, long len);
-    native int fallocate(int fd, int mode, long offset, long len);
-    native int fsync(int fd);
-    native int pwrite(int fd, Pointer buf, int count, long offset) throws LastErrorException;
-    native int posix_memalign(PointerByReference memptr, int alignment, int size) throws LastErrorException;
-    native long lseek(int fd, long offset, int whence) throws LastErrorException;
-    native long pread(int fd, Pointer buf, long size, long offset);
-    native int close(int fd);
+    int open(String pathname, int flags, int mode) throws LastErrorException;
+    int fsync(int fd) throws LastErrorException;
+    /**
+     * fallocate is a linux-only syscall, so callers must handle the possibility that it does
+     * not exist.
+     */
+    int fallocate(int fd, int mode, long offset, long len) throws LastErrorException, UnsatisfiedLinkError;
+    int pwrite(int fd, Pointer buf, int count, long offset) throws LastErrorException;
+    int posix_memalign(PointerByReference memptr, int alignment, int size) throws LastErrorException;
+    void free(Pointer buf);
+    long lseek(int fd, long offset, int whence) throws LastErrorException;
+    long pread(int fd, Pointer buf, long size, long offset);
+    int close(int fd) throws LastErrorException;
 }

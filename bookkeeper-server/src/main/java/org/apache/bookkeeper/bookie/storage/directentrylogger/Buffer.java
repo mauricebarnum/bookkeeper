@@ -56,21 +56,22 @@ class Buffer {
     public static final int ALIGNMENT = 4096;
     private static final int MAX_ALIGNMENT = Integer.MAX_VALUE & ~(ALIGNMENT - 1);
     static final byte[] PADDING = generatePadding();
-    private final NativeIO nativeIO = new NativeIO();
 
+    final NativeIO nativeIO;
     final int bufferSize;
-    final Pointer pointer;
-    final ByteBuffer byteBuffer;
+    Pointer pointer;
+    ByteBuffer byteBuffer;
 
-    Buffer(int bufferSize) throws IOException {
+    Buffer(NativeIO nativeIO, int bufferSize) throws IOException {
         checkArgument(isAligned(bufferSize),
-                                    "Buffer size not aligned %d", bufferSize);
+                      "Buffer size not aligned %d", bufferSize);
         PointerByReference pntByRef = new PointerByReference();
         int ret = nativeIO.posix_memalign(pntByRef, ALIGNMENT, bufferSize);
         if (ret != 0) {
             throw new IOException(exMsg("Error setting up buffer")
                                   .kv("errno", ret).toString());
         }
+        this.nativeIO = nativeIO;
         this.bufferSize = bufferSize;
         pointer = pntByRef.getValue();
         byteBuffer = pointer.getByteBuffer(0, bufferSize);
@@ -172,7 +173,7 @@ class Buffer {
         } finally {
             byteBuffer.limit(originalLimit);
         }
-        return buffer.readableBytes();
+        return bytesToRead;
     }
 
     /**
@@ -183,6 +184,18 @@ class Buffer {
         return pointer;
     }
 
+    Pointer pointer(long offset, long expectedWrite) {
+        if (offset == 0) {
+            return pointer;
+        } else {
+            if (offset + expectedWrite > byteBuffer.capacity()) {
+                throw new IllegalArgumentException(
+                        exMsg("Buffer overflow").kv("offset", offset).kv("expectedWrite", expectedWrite)
+                        .kv("capacity", byteBuffer.capacity()).toString());
+            }
+            return new Pointer(Pointer.nativeValue(pointer) + offset);
+        }
+    }
     /**
      * @return the number of bytes which have been written to this buffer.
      */
@@ -216,14 +229,24 @@ class Buffer {
         byteBuffer.clear();
     }
 
+    /**
+     * Free the memory that backs this buffer.
+     */
+    void free() {
+        if (pointer != null) {
+            nativeIO.free(pointer);
+        }
+        byteBuffer = null;
+        pointer = null;
+    }
     private static byte[] generatePadding() {
         byte[] padding = new byte[ALIGNMENT];
         Arrays.fill(padding, (byte) PADDING_BYTE);
         return padding;
     }
 
-    static boolean isAligned(int size) {
-        return size > 0 && ((ALIGNMENT - 1) & size) == 0;
+    static boolean isAligned(long size) {
+        return size >= 0 && ((ALIGNMENT - 1) & size) == 0;
     }
 
     static int nextAlignment(int pos) {

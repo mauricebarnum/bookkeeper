@@ -37,7 +37,6 @@ public class TestBuffer {
     @Test
     public void testIsAligned() throws Exception {
         assertThat(Buffer.isAligned(1234), equalTo(false));
-        assertThat(Buffer.isAligned(0), equalTo(false));
         assertThat(Buffer.isAligned(4096), equalTo(true));
         assertThat(Buffer.isAligned(40960), equalTo(true));
         assertThat(Buffer.isAligned(1 << 20), equalTo(true));
@@ -67,13 +66,13 @@ public class TestBuffer {
 
     @Test(expected = IllegalArgumentException.class)
     public void testCreateUnaligned() throws Exception {
-        new Buffer(1234);
+        new Buffer(new NativeIOImpl(), 1234);
     }
 
     @Test
     public void testWriteInt() throws Exception {
         int bufferSize = 1 << 20;
-        Buffer b = new Buffer(bufferSize);
+        Buffer b = new Buffer(new NativeIOImpl(), bufferSize);
         assertThat(b.hasSpace(bufferSize), equalTo(true));
         assertThat(b.position(), equalTo(0));
         b.writeInt(0xdeadbeef);
@@ -106,9 +105,8 @@ public class TestBuffer {
     public void testWriteBuffer() throws Exception {
         ByteBuf bb = Unpooled.buffer(1021);
         fillByteBuf(bb, 0xdeadbeef);
-        bb.writeByte(0xdd);
         int bufferSize = 1 << 20;
-        Buffer b = new Buffer(bufferSize);
+        Buffer b = new Buffer(new NativeIOImpl(), bufferSize);
         assertThat(b.position(), equalTo(0));
         b.writeByteBuf(bb);
         assertThat(b.position(), equalTo(1021));
@@ -117,15 +115,15 @@ public class TestBuffer {
         fillByteBuf(bb, 0xcafecafe);
         b.writeByteBuf(bb);
         assertThat(bb.readableBytes(), equalTo(0));
-        assertThat(b.position(), equalTo(2041));
+        assertThat(b.position(), equalTo(2042));
 
-        bb = Unpooled.buffer(2041);
-        int ret = b.readByteBuf(bb, 0, 2041);
-        assertThat(ret, equalTo(2041));
+        bb = Unpooled.buffer(2042);
+        int ret = b.readByteBuf(bb, 0, 2042);
+        assertThat(ret, equalTo(2042));
         for (int i = 0; i < 1020 / Integer.BYTES; i++) {
             assertThat(bb.readInt(), equalTo(0xdeadbeef));
         }
-        assertThat(bb.readByte(), equalTo((byte) 0xdd));
+        assertThat(bb.readByte(), equalTo((byte) 0xde));
         for (int i = 0; i < 1020 / Integer.BYTES; i++) {
             assertThat(bb.readInt(), equalTo(0xcafecafe));
         }
@@ -135,7 +133,7 @@ public class TestBuffer {
     public void testPartialRead() throws Exception {
         ByteBuf bb = Unpooled.buffer(5000);
 
-        Buffer b = new Buffer(4096);
+        Buffer b = new Buffer(new NativeIOImpl(), 4096);
         for (int i = 0; i < 4096 / Integer.BYTES; i++) {
             b.writeInt(0xdeadbeef);
         }
@@ -146,7 +144,7 @@ public class TestBuffer {
 
     @Test(expected = IOException.class)
     public void testReadIntAtBoundary() throws Exception {
-        Buffer b = new Buffer(4096);
+        Buffer b = new Buffer(new NativeIOImpl(), 4096);
 
         for (int i = 0; i < 4096 / Integer.BYTES; i++) {
             b.writeInt(0xdeadbeef);
@@ -159,7 +157,7 @@ public class TestBuffer {
 
     @Test(expected = IOException.class)
     public void testReadLongAtBoundary() throws Exception {
-        Buffer b = new Buffer(4096);
+        Buffer b = new Buffer(new NativeIOImpl(), 4096);
 
         for (int i = 0; i < 4096 / Integer.BYTES; i++) {
             b.writeInt(0xdeadbeef);
@@ -172,7 +170,7 @@ public class TestBuffer {
 
     @Test
     public void testPadToAlignment() throws Exception {
-        Buffer b = new Buffer(1 << 23);
+        Buffer b = new Buffer(new NativeIOImpl(), 1 << 23);
 
         for (int i = 0; i < 1025; i++) {
             b.writeInt(0xdededede);
@@ -187,9 +185,20 @@ public class TestBuffer {
         assertThat(b.readInt(writtenLength), equalTo(0));
     }
 
-    private static void fillByteBuf(ByteBuf bb, int value) {
-        while (bb.writableBytes() > Integer.BYTES) {
+    @Test
+    public void testFree() throws Exception {
+        Buffer b = new Buffer(new NativeIOImpl(), 1 << 23);
+        b.free(); // success if process doesn't explode
+        b.free();
+    }
+
+    static void fillByteBuf(ByteBuf bb, int value) {
+        while (bb.writableBytes() >= Integer.BYTES) {
             bb.writeInt(value);
+        }
+        for (int i = 0; i < Integer.BYTES && bb.writableBytes() > 0; i++) {
+            byte b = (byte) (value >> (Integer.BYTES - i - 1) * 8);
+            bb.writeByte(b);
         }
     }
 }

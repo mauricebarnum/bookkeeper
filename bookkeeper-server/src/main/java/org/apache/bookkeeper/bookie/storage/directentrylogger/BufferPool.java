@@ -27,11 +27,13 @@ import java.util.concurrent.ArrayBlockingQueue;
  * BufferPool.
  */
 public class BufferPool {
+    private final int maxPoolSize;
     private final ArrayBlockingQueue<Buffer> pool;
-    BufferPool(int bufferSize, int poolSize) throws IOException {
-        pool = new ArrayBlockingQueue<>(poolSize);
-        for (int i = 0; i < poolSize; i++) {
-            pool.add(new Buffer(bufferSize));
+    BufferPool(NativeIO nativeIO, int bufferSize, int maxPoolSize) throws IOException {
+        this.maxPoolSize = maxPoolSize;
+        pool = new ArrayBlockingQueue<>(maxPoolSize);
+        for (int i = 0; i < maxPoolSize; i++) {
+            pool.add(new Buffer(nativeIO, bufferSize));
         }
     }
 

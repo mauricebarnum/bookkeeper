@@ -33,7 +33,10 @@ public abstract class AbstractLogCompactor {
     protected final ServerConfiguration conf;
     protected final Throttler throttler;
 
-    interface LogRemovalListener {
+    /**
+     * LogRemovalListener.
+     */
+    public interface LogRemovalListener {
         void removeEntryLog(long logToRemove);
     }
 
