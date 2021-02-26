@@ -23,15 +23,16 @@ package org.apache.bookkeeper.bookie.storage.directentrylogger;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.apache.bookkeeper.common.util.ExceptionMessageHelper.exMsg;
 
-import com.sun.jna.Pointer;
-import com.sun.jna.ptr.PointerByReference;
-
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.util.ReferenceCountUtil;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+
+import org.apache.bookkeeper.common.util.nativeio.NativeIO;
 
 /**
  * A utility buffer class to be used with native calls.
@@ -59,23 +60,34 @@ class Buffer {
 
     final NativeIO nativeIO;
     final int bufferSize;
-    Pointer pointer;
+    ByteBuf buffer;
     ByteBuffer byteBuffer;
+    long pointer = 0;
 
     Buffer(NativeIO nativeIO, int bufferSize) throws IOException {
         checkArgument(isAligned(bufferSize),
                       "Buffer size not aligned %d", bufferSize);
-        PointerByReference pntByRef = new PointerByReference();
-        int ret = nativeIO.posix_memalign(pntByRef, ALIGNMENT, bufferSize);
-        if (ret != 0) {
-            throw new IOException(exMsg("Error setting up buffer")
-                                  .kv("errno", ret).toString());
-        }
+
+        this.buffer = allocateAligned(ALIGNMENT, bufferSize);
+
         this.nativeIO = nativeIO;
         this.bufferSize = bufferSize;
-        pointer = pntByRef.getValue();
-        byteBuffer = pointer.getByteBuffer(0, bufferSize);
+        byteBuffer = buffer.nioBuffer(0, bufferSize);
         byteBuffer.order(ByteOrder.BIG_ENDIAN);
+    }
+
+    private ByteBuf allocateAligned(int alignment, int bufferSize) {
+        ByteBuf buf = PooledByteBufAllocator.DEFAULT.directBuffer(bufferSize + alignment);
+        long addr = buf.memoryAddress();
+        if ((addr & (alignment - 1)) == 0) {
+            // The address is already aligned
+            pointer = addr;
+            return buf.slice(0, bufferSize);
+        } else {
+            int alignOffset = (int) (alignment - (addr & (alignment - 1)));
+            pointer = addr + alignOffset;
+            return buf.slice(alignOffset, bufferSize);
+        }
     }
 
     /**
@@ -177,14 +189,14 @@ class Buffer {
     }
 
     /**
-     * The JNA pointer object for the native buffer. This can be used
-     * by JNA method which take a char* or void*.
+     * The data pointer object for the native buffer. This can be used
+     * by JNI method which take a char* or void*.
      */
-    Pointer pointer() {
+    long pointer() {
         return pointer;
     }
 
-    Pointer pointer(long offset, long expectedWrite) {
+    long pointer(long offset, long expectedWrite) {
         if (offset == 0) {
             return pointer;
         } else {
@@ -193,7 +205,8 @@ class Buffer {
                         exMsg("Buffer overflow").kv("offset", offset).kv("expectedWrite", expectedWrite)
                         .kv("capacity", byteBuffer.capacity()).toString());
             }
-            return new Pointer(Pointer.nativeValue(pointer) + offset);
+
+            return pointer + offset;
         }
     }
     /**
@@ -232,12 +245,10 @@ class Buffer {
     /**
      * Free the memory that backs this buffer.
      */
-    void free() {
-        if (pointer != null) {
-            nativeIO.free(pointer);
-        }
+    void free() throws IOException {
+        ReferenceCountUtil.safeRelease(buffer);
+        buffer = null;
         byteBuffer = null;
-        pointer = null;
     }
     private static byte[] generatePadding() {
         byte[] padding = new byte[ALIGNMENT];

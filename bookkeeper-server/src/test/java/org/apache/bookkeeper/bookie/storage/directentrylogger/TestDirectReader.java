@@ -26,9 +26,6 @@ import static org.hamcrest.Matchers.equalTo;
 
 import com.google.common.util.concurrent.MoreExecutors;
 
-import com.sun.jna.LastErrorException;
-import com.sun.jna.Pointer;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
@@ -42,6 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.apache.bookkeeper.common.util.nativeio.NativeIOException;
+import org.apache.bookkeeper.common.util.nativeio.NativeIOImpl;
 import org.apache.bookkeeper.slogger.Slogger;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.OpStatsLogger;
@@ -307,7 +307,7 @@ public class TestDirectReader {
         NativeIOImpl nativeIO = new NativeIOImpl() {
                 @Override
                 public int fallocate(int fd, int mode, long offset, long len)
-                        throws LastErrorException, UnsatisfiedLinkError {
+                        throws NativeIOException {
                     return 0;
                 }
             };
@@ -387,14 +387,14 @@ public class TestDirectReader {
 
         NativeIOImpl nativeIO = new NativeIOImpl() {
                 @Override
-                public long pread(int fd, Pointer buf, long size, long offset) {
+                public long pread(int fd, long buf, long size, long offset) throws NativeIOException {
                     long read = super.pread(fd, buf, size, offset);
                     return Math.min(read, Buffer.ALIGNMENT); // force only less than a buffer read
                 }
 
                 @Override
                 public int fallocate(int fd, int mode, long offset, long len)
-                        throws LastErrorException, UnsatisfiedLinkError {
+                        throws NativeIOException {
                     return 0; // don't preallocate
                 }
             };

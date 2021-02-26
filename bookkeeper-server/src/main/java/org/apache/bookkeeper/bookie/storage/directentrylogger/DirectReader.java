@@ -23,15 +23,14 @@ package org.apache.bookkeeper.bookie.storage.directentrylogger;
 import static com.google.common.base.Preconditions.checkState;
 import static org.apache.bookkeeper.common.util.ExceptionMessageHelper.exMsg;
 
-import com.sun.jna.LastErrorException;
-import com.sun.jna.Pointer;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.bookkeeper.common.util.nativeio.NativeIO;
+import org.apache.bookkeeper.common.util.nativeio.NativeIOException;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 
 class DirectReader implements LogReader {
@@ -64,10 +63,10 @@ class DirectReader implements LogReader {
                                NativeIO.O_RDONLY | NativeIO.O_DIRECT,
                                00755);
             checkState(fd >= 0, "Open should throw exception on negative return (%d)", fd);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("Error opening file")
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage())
                                   .kv("file", filename)
-                                  .kv("errno", lee.getErrorCode()).toString());
+                                  .kv("errno", ne.getErrno()).toString());
         }
         refreshMaxOffset();
     }
@@ -213,7 +212,7 @@ class DirectReader implements LogReader {
                 attempts++;
 
                 long readSize = blockSize - bufferOffset;
-                Pointer pointerWithOffset = nativeBuffer.pointer(bufferOffset, readSize);
+                long pointerWithOffset = nativeBuffer.pointer(bufferOffset, readSize);
                 bytesRead = nativeIO.pread(fd, pointerWithOffset,
                                            readSize,
                                            blockStart + bufferOffset);
@@ -232,16 +231,17 @@ class DirectReader implements LogReader {
                 bytesOutstanding -= bytesRead & Buffer.ALIGNMENT;
                 bufferOffset += bytesRead & Buffer.ALIGNMENT;
             }
-        } catch (LastErrorException lee) {
+        } catch (NativeIOException ne) {
             readBlockStats.registerFailedEvent(System.nanoTime() - startNs, TimeUnit.NANOSECONDS);
-            throw new IOException(exMsg("Read error")
+            throw new IOException(exMsg(ne.getMessage())
                                   .kv("requestedBytes", blockSize)
                                   .kv("offset", blockStart)
                                   .kv("expectedBytes", Math.min(blockSize, bytesAvailable))
                                   .kv("bytesOutstanding", bytesOutstanding)
                                   .kv("bufferOffset", bufferOffset)
-                                  .kv("file", filename).kv("fd", fd)
-                                  .kv("errno", lee.getErrorCode()).toString());
+                                  .kv("file", filename)
+                                  .kv("fd", fd)
+                                  .kv("errno", ne.getErrno()).toString());
         }
         readBlockStats.registerSuccessfulEvent(System.nanoTime() - startNs, TimeUnit.NANOSECONDS);
         currentBlock = blockStart;
@@ -257,10 +257,10 @@ class DirectReader implements LogReader {
         try {
             int ret = nativeIO.close(fd);
             checkState(ret == 0, "Close should throw exception on non-zero return (%d)", ret);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("File close error")
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage())
                     .kv("file", filename)
-                    .kv("errno", lee.getErrorCode()).toString());
+                    .kv("errno", ne.getErrno()).toString());
         }
     }
 
@@ -277,11 +277,11 @@ class DirectReader implements LogReader {
             synchronized (this) {
                 maxOffset = ret;
             }
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("Couldn't seek to end")
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage())
                                   .kv("file", filename)
                                   .kv("fd", fd)
-                                  .kv("errno", lee.getErrorCode()).toString());
+                                  .kv("errno", ne.getErrno()).toString());
         }
     }
 

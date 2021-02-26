@@ -24,8 +24,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static org.apache.bookkeeper.common.util.ExceptionMessageHelper.exMsg;
 
-import com.sun.jna.LastErrorException;
-
 import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
@@ -35,7 +33,10 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
+import org.apache.bookkeeper.common.util.nativeio.NativeIO;
+import org.apache.bookkeeper.common.util.nativeio.NativeIOException;
 import org.apache.bookkeeper.slogger.Slogger;
+import org.apache.commons.lang3.SystemUtils;
 
 class DirectWriter implements LogWriter {
     final NativeIO nativeIO;
@@ -48,6 +49,7 @@ class DirectWriter implements LogWriter {
     final List<Future<?>> outstandingWrites = new ArrayList<Future<?>>();
     Buffer nativeBuffer;
     long offset;
+    private static volatile boolean useFallocate = true;
 
     DirectWriter(int id,
                  String filename,
@@ -68,20 +70,31 @@ class DirectWriter implements LogWriter {
                                NativeIO.O_CREAT | NativeIO.O_WRONLY | NativeIO.O_DIRECT,
                                00755);
             checkState(fd >= 0, "Open should have thrown exception, fd is invalid : %d", fd);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("Error opening log").kv("file", filename)
-                                  .kv("errno", lee.getErrorCode()).toString(), lee);
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage()).kv("file", filename)
+                                  .kv("errno", ne.getErrno()).toString(), ne);
         }
 
-        try {
-            int ret = nativeIO.fallocate(fd, NativeIO.FALLOC_FL_ZERO_RANGE, 0, maxFileSize);
-            checkState(ret == 0,  "Exception should have been thrown on non-zero ret: %d", ret);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("Error preallocating log")
-                                  .kv("file", filename).kv("errno", lee.getErrorCode()).toString());
-        } catch (UnsatisfiedLinkError ule) {
-            slog.warn(Events.FALLOCATE_NOT_AVAILABLE, ule);
+        if (useFallocate) {
+            if (!SystemUtils.IS_OS_LINUX) {
+                useFallocate = false;
+                slog.warn(Events.FALLOCATE_NOT_AVAILABLE);
+            } else {
+                try {
+                    int ret = nativeIO.fallocate(fd, NativeIO.FALLOC_FL_ZERO_RANGE, 0, maxFileSize);
+                    checkState(ret == 0, "Exception should have been thrown on non-zero ret: %d", ret);
+                } catch (NativeIOException ex) {
+                    // fallocate(2) is not supported on all filesystems.  Since this is an optimization, disable
+                    // subsequent usage instead of failing the operation.
+                    useFallocate = false;
+                    slog.kv("message", ex.getMessage())
+                        .kv("file", filename)
+                        .kv("errno", ex.getErrno())
+                        .warn(Events.FALLOCATE_NOT_AVAILABLE);
+                }
+            }
         }
+
         this.bufferPool = bufferPool;
         this.nativeBuffer = bufferPool.acquire();
     }
@@ -112,11 +125,11 @@ class DirectWriter implements LogWriter {
                                               .kv("bytesWritten", ret)
                                               .kv("offset", offset).toString());
                     }
-                } catch (LastErrorException le) {
+                } catch (NativeIOException ne) {
                     throw new IOException(exMsg("Write error")
                                           .kv("filename", filename)
                                           .kv("writeSize", bytesToWrite)
-                                          .kv("errno", le.getErrorCode())
+                                          .kv("errno", ne.getErrno())
                                           .kv("offset", offset).toString());
                 } finally {
                     bufferPool.release(tmpBuffer);
@@ -180,10 +193,10 @@ class DirectWriter implements LogWriter {
         try {
             int ret = nativeIO.fsync(fd);
             checkState(ret == 0, "Fsync should throw exception on non-zero return (%d)", ret);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("Fsync error")
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage())
                                   .kv("file", filename)
-                                  .kv("errno", lee.getErrorCode()).toString());
+                                  .kv("errno", ne.getErrno()).toString());
         }
     }
 
@@ -198,10 +211,10 @@ class DirectWriter implements LogWriter {
         try {
             int ret = nativeIO.close(fd);
             checkState(ret == 0, "Close should throw exception on non-zero return (%d)", ret);
-        } catch (LastErrorException lee) {
-            throw new IOException(exMsg("File close error")
+        } catch (NativeIOException ne) {
+            throw new IOException(exMsg(ne.getMessage())
                                   .kv("file", filename)
-                                  .kv("errno", lee.getErrorCode()).toString());
+                                  .kv("errno", ne.getErrno()).toString());
         }
         synchronized (bufferLock) {
             bufferPool.release(nativeBuffer);
@@ -277,13 +290,13 @@ class DirectWriter implements LogWriter {
                                                       .kv("writeSize", bytesToWrite)
                                                       .kv("bytesWritten", ret).toString());
                             }
-                        } catch (LastErrorException le) {
-                            throw new IOException(exMsg("Write error")
+                        } catch (NativeIOException ne) {
+                            throw new IOException(exMsg(ne.getMessage())
                                                   .kv("filename", filename)
                                                   .kv("offset", offsetToWrite)
                                                   .kv("writeSize", bytesToWrite)
                                                   .kv("pointer", bufferToFlush.pointer())
-                                                  .kv("errno", le.getErrorCode()).toString(), le);
+                                                  .kv("errno", ne.getErrno()).toString(), ne);
                         } finally {
                             bufferPool.release(bufferToFlush);
                         }

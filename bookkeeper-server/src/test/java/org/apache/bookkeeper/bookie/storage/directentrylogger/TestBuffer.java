@@ -25,8 +25,13 @@ import static org.hamcrest.Matchers.*;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+// CHECKSTYLE.OFF: IllegalImport
+import io.netty.util.internal.PlatformDependent;
+// CHECKSTYLE.ON: IllegalImport
+
 import java.io.IOException;
 
+import org.apache.bookkeeper.common.util.nativeio.NativeIOImpl;
 import org.junit.Test;
 
 /**
@@ -77,10 +82,11 @@ public class TestBuffer {
         assertThat(b.position(), equalTo(0));
         b.writeInt(0xdeadbeef);
 
-        assertThat(b.pointer().getByte(0), equalTo((byte) 0xde));
-        assertThat(b.pointer().getByte(1), equalTo((byte) 0xad));
-        assertThat(b.pointer().getByte(2), equalTo((byte) 0xbe));
-        assertThat(b.pointer().getByte(3), equalTo((byte) 0xef));
+
+        assertThat(PlatformDependent.getByte(b.pointer() + 0), equalTo((byte) 0xde));
+        assertThat(PlatformDependent.getByte(b.pointer() + 1), equalTo((byte) 0xad));
+        assertThat(PlatformDependent.getByte(b.pointer() + 2), equalTo((byte) 0xbe));
+        assertThat(PlatformDependent.getByte(b.pointer() + 3), equalTo((byte) 0xef));
 
         assertThat(b.hasSpace(bufferSize), equalTo(false));
         assertThat(b.position(), equalTo(Integer.BYTES));

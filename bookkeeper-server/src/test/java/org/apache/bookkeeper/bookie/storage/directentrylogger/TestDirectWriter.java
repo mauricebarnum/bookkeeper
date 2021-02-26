@@ -25,8 +25,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 import com.google.common.util.concurrent.MoreExecutors;
-import com.sun.jna.LastErrorException;
-import com.sun.jna.Pointer;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -39,6 +37,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import org.apache.bookkeeper.common.util.nativeio.NativeIO;
+import org.apache.bookkeeper.common.util.nativeio.NativeIOException;
+import org.apache.bookkeeper.common.util.nativeio.NativeIOImpl;
 import org.apache.bookkeeper.slogger.Slogger;
 import org.apache.bookkeeper.test.TmpDirs;
 import org.junit.After;
@@ -122,14 +123,14 @@ public class TestDirectWriter {
         NativeIO io = new NativeIOImpl() {
                 boolean failed = false;
                 @Override
-                public int pwrite(int fd, Pointer buf, int count, long offset) throws LastErrorException {
+                public int pwrite(int fd, long pointer, int count, long offset) throws NativeIOException {
                     synchronized (this) {
                         if (!failed) {
                             failed = true;
-                            throw new LastErrorException("fail for test");
+                            throw new NativeIOException("fail for test");
                         }
                     }
-                    return super.pwrite(fd, buf, count, offset);
+                    return super.pwrite(fd, pointer, count, offset);
                 }
             };
         try (LogWriter writer = new DirectWriter(5678, logFilename(ledgerDir, 5678), 1 << 24, writeExecutor,
@@ -150,14 +151,14 @@ public class TestDirectWriter {
         NativeIO io = new NativeIOImpl() {
                 boolean failed = false;
                 @Override
-                public int pwrite(int fd, Pointer buf, int count, long offset) throws LastErrorException {
+                public int pwrite(int fd, long pointer, int count, long offset) throws NativeIOException {
                     synchronized (this) {
                         if (!failed) {
                             failed = true;
-                            throw new LastErrorException("fail for test");
+                            throw new NativeIOException("fail for test");
                         }
                     }
-                    return super.pwrite(fd, buf, count, offset);
+                    return super.pwrite(fd, pointer, count, offset);
                 }
             };
 
@@ -254,8 +255,8 @@ public class TestDirectWriter {
         NativeIO nativeIO = new NativeIOImpl() {
                 @Override
                 public int fallocate(int fd, int mode, long offset, long len)
-                        throws UnsatisfiedLinkError {
-                    throw new UnsatisfiedLinkError("pretending I'm a mac");
+                        throws NativeIOException {
+                    throw new NativeIOException("pretending I'm a mac");
                 }
             };
         try (LogWriter writer = new DirectWriter(3456, logFilename(ledgerDir, 3456),

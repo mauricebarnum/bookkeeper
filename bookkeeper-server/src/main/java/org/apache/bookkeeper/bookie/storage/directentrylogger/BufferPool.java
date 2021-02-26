@@ -23,6 +23,8 @@ package org.apache.bookkeeper.bookie.storage.directentrylogger;
 import java.io.IOException;
 import java.util.concurrent.ArrayBlockingQueue;
 
+import org.apache.bookkeeper.common.util.nativeio.NativeIO;
+
 /**
  * BufferPool.
  */
