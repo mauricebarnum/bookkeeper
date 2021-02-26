@@ -27,7 +27,7 @@ import org.apache.bookkeeper.bookie.storage.EntryLogScanner;
 
 class LogReaderScan {
     static void scan(LogReader reader, EntryLogScanner scanner) throws IOException {
-        int offset = Header.LOGFILE_HEADER_SIZE;
+        int offset = Header.LOGFILE_LEGACY_HEADER_SIZE;
 
         ByteBuf entry = PooledByteBufAllocator.DEFAULT.directBuffer(16 * 1024 * 1024);
 

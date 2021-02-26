@@ -79,9 +79,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      10 * 1024 * 1024, // 10MiB, max file size
                      10 * 1024 * 1024, // max sane entry size
-                     1 * 1024 * 1024, // write buffer size
-                     1 * 1024 * 1024, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             loc1 = elog.addEntry(ledgerId1, e1.slice());
@@ -120,9 +121,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      10 * 1024 * 1024, // 10MiB, max file size
                      10 * 1024 * 1024, // max sane entry size
-                     1 * 1024 * 1024, // write buffer size
-                     1 * 1024 * 1024, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                  300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             assertEntryEquals(elog.readEntry(ledgerId1, 1L, loc1), e1);
@@ -150,9 +152,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      6000, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             loc1 = elog.addEntry(ledgerId1, e1.slice());
@@ -188,9 +191,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      maxFileSize, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
              loc1 = elog.addEntry(ledgerId1, e1);
@@ -238,9 +242,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      maxFileSize * 10, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             loc1 = elog.addEntry(ledgerId1, e1);
@@ -294,9 +299,10 @@ public class TestDirectEntryLoggerCompat {
                      MoreExecutors.newDirectExecutorService(),
                      maxFileSize * 10, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             int logId = logIdFromLocation(loc1);

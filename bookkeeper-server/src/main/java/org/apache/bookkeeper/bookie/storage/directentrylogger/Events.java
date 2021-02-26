@@ -50,6 +50,11 @@ public enum Events {
     ENTRYLOGGER_CREATED,
 
     /**
+     * The entrylogger has been configured in a way that will likely result in errors during operation.
+     */
+    ENTRYLOGGER_MISCONFIGURED,
+
+    /**
      * The entrylogger has started writing the a new log file. The previous log file may not
      * be entirely flushed when this is called, though they will be after an explicit flush call.
      */

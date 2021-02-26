@@ -120,7 +120,7 @@ class LogMetadata {
     }
 
     static EntryLogMetadata read(LogReader reader) throws IOException {
-        ByteBuf header = reader.readBufferAt(0, Header.LOGFILE_HEADER_SIZE);
+        ByteBuf header = reader.readBufferAt(0, Header.LOGFILE_LEGACY_HEADER_SIZE);
         try {
             int headerVersion = Header.extractVersion(header);
             if (headerVersion < Header.HEADER_V1) {

@@ -24,6 +24,7 @@ import static org.apache.bookkeeper.bookie.BookKeeperServerStats.BOOKIE_READ_ENT
 import static org.apache.bookkeeper.bookie.BookKeeperServerStats.BOOKIE_SCOPE;
 import static org.apache.bookkeeper.bookie.BookKeeperServerStats.CATEGORY_SERVER;
 
+import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stats.annotations.StatsDoc;
@@ -39,6 +40,9 @@ class DirectEntryLoggerStats {
     private static final String FLUSH = "entrylog-flush";
     private static final String WRITER_FLUSH = "entrylog-writer-flush";
     private static final String READ_BLOCK = "entrylog-read-block";
+    private static final String READER_OPEN = "entrylog-open-reader";
+    private static final String READER_CLOSE = "entrylog-close-reader";
+    private static final String CACHED_READER_SERVED_CLOSED = "entrylog-cached-reader-closed";
 
     @StatsDoc(
               name = ADD_ENTRY,
@@ -72,6 +76,24 @@ class DirectEntryLoggerStats {
     )
     private final ThreadLocal<OpStatsLogger> readBlockStats;
 
+    @StatsDoc(
+            name = READER_OPEN,
+            help = "Stats for reader open operations"
+    )
+    private final ThreadLocal<Counter> openReaderStats;
+
+    @StatsDoc(
+            name = READER_CLOSE,
+            help = "Stats for reader close operations"
+    )
+    private final ThreadLocal<Counter> closeReaderStats;
+
+    @StatsDoc(
+            name = CACHED_READER_SERVED_CLOSED,
+            help = "Stats for cached readers being served closed"
+    )
+    private final ThreadLocal<Counter> cachedReadersServedClosed;
+
     DirectEntryLoggerStats(StatsLogger stats) {
         addEntryStats = stats.getOpStatsLogger(ADD_ENTRY);
 
@@ -92,6 +114,30 @@ class DirectEntryLoggerStats {
                     .getOpStatsLogger(READ_BLOCK);
                 }
             };
+
+        openReaderStats = new ThreadLocal<Counter>() {
+            @Override
+            public Counter initialValue() {
+                return stats.scopeLabel("thread", String.valueOf(Thread.currentThread().getId()))
+                        .getCounter(READER_OPEN);
+            }
+        };
+
+        closeReaderStats = new ThreadLocal<Counter>() {
+            @Override
+            public Counter initialValue() {
+                return stats.scopeLabel("thread", String.valueOf(Thread.currentThread().getId()))
+                        .getCounter(READER_CLOSE);
+            }
+        };
+
+        cachedReadersServedClosed = new ThreadLocal<Counter>() {
+            @Override
+            public Counter initialValue() {
+                return stats.scopeLabel("thread", String.valueOf(Thread.currentThread().getId()))
+                        .getCounter(CACHED_READER_SERVED_CLOSED);
+            }
+        };
     }
 
     OpStatsLogger getAddEntryStats() {
@@ -107,11 +153,22 @@ class DirectEntryLoggerStats {
     }
 
     OpStatsLogger getReadEntryStats() {
-    return readEntryStats.get();
-
+        return readEntryStats.get();
     }
 
     OpStatsLogger getReadBlockStats() {
-    return readBlockStats.get();
+        return readBlockStats.get();
+    }
+
+    Counter getOpenReaderCounter() {
+        return openReaderStats.get();
+    }
+
+    Counter getCloseReaderCounter() {
+        return closeReaderStats.get();
+    }
+
+    Counter getCachedReadersServedClosedCounter() {
+        return cachedReadersServedClosed.get();
     }
 }

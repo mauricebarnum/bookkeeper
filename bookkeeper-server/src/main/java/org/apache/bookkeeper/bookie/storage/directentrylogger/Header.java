@@ -39,7 +39,8 @@ import java.io.IOException;
  * </pre>
  */
 class Header {
-    static final int LOGFILE_HEADER_SIZE = 1024;
+    static final int LOGFILE_LEGACY_HEADER_SIZE = 1024;
+    static final int LOGFILE_DIRECT_HEADER_SIZE = Buffer.ALIGNMENT;
     static final int HEADER_VERSION_OFFSET = 4;
     static final int LEDGERS_MAP_OFFSET = HEADER_VERSION_OFFSET + Integer.BYTES;
     static final int LEDGER_COUNT_OFFSET = LEDGERS_MAP_OFFSET + Long.BYTES;
@@ -47,7 +48,7 @@ class Header {
     static final int HEADER_V1 = 1; // Introduced ledger map index
     static final int HEADER_CURRENT_VERSION = HEADER_V1;
 
-    static final byte[] EMPTY_HEADER = new byte[Buffer.ALIGNMENT];
+    static final byte[] EMPTY_HEADER = new byte[LOGFILE_DIRECT_HEADER_SIZE];
     static {
         ByteBuf buf = Unpooled.wrappedBuffer(EMPTY_HEADER);
         buf.setByte(0, 'B');
@@ -58,8 +59,8 @@ class Header {
         // legacy header size is 1024, while direct is 4096 so that it can be written as a single block
         // to avoid legacy failing when it encounters the header in direct, create a dummy entry, which
         // skips to the start of the second block
-        buf.setInt(LOGFILE_HEADER_SIZE, (buf.capacity() - LOGFILE_HEADER_SIZE) - Integer.BYTES);
-        buf.setLong(LOGFILE_HEADER_SIZE + Integer.BYTES, LogMetadata.INVALID_LID);
+        buf.setInt(LOGFILE_LEGACY_HEADER_SIZE, (buf.capacity() - LOGFILE_LEGACY_HEADER_SIZE) - Integer.BYTES);
+        buf.setLong(LOGFILE_LEGACY_HEADER_SIZE + Integer.BYTES, LogMetadata.INVALID_LID);
     };
     static int extractVersion(ByteBuf header) throws IOException {
         assertFingerPrint(header);

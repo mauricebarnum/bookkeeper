@@ -69,9 +69,10 @@ public class EntryLogTestUtils {
                 MoreExecutors.newDirectExecutorService(),
                 logSizeLimit, // max file size
                 10 * 1024 * 1024, // max sane entry size
-                2 << 14, // write buffer size
-                2 << 14, // read buffer size
-                8, // max cached read files
+                1024 * 1024, // total write buffer size
+                1024 * 1024, // total read buffer size
+                64 * 1024, // read buffer size
+                1, // numReadThreads
                 300, // max fd cache time in seconds
                 slog, NullStatsLogger.INSTANCE);
     }

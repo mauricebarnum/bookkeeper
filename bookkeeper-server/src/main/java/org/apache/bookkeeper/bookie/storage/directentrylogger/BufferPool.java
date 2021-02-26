@@ -28,7 +28,7 @@ import org.apache.bookkeeper.common.util.nativeio.NativeIO;
 /**
  * BufferPool.
  */
-public class BufferPool {
+public class BufferPool implements AutoCloseable {
     private final int maxPoolSize;
     private final ArrayBlockingQueue<Buffer> pool;
     BufferPool(NativeIO nativeIO, int bufferSize, int maxPoolSize) throws IOException {
@@ -50,6 +50,20 @@ public class BufferPool {
 
     void release(Buffer buffer) {
         buffer.reset();
-        pool.add(buffer);
+        if (!pool.add(buffer)) {
+            buffer.free();
+        }
+    }
+
+    @Override
+    public void close() {
+        while (true) {
+            Buffer b = pool.poll();
+            if (b == null) {
+                break;
+            }
+
+            b.free();
+        }
     }
 }

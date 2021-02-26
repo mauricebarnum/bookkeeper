@@ -245,7 +245,7 @@ class Buffer {
     /**
      * Free the memory that backs this buffer.
      */
-    void free() throws IOException {
+    void free() {
         ReferenceCountUtil.safeRelease(buffer);
         buffer = null;
         byteBuffer = null;

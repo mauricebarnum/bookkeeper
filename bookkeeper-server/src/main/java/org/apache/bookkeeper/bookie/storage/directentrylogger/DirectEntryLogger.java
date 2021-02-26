@@ -28,6 +28,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import java.io.EOFException;
@@ -47,7 +48,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
-
 import org.apache.bookkeeper.bookie.Bookie.NoEntryException;
 import org.apache.bookkeeper.bookie.EntryLogMetadata;
 import org.apache.bookkeeper.bookie.storage.CompactionEntryLog;
@@ -74,8 +74,6 @@ public class DirectEntryLogger implements EntryLoggerIface {
     private final ByteBufAllocator allocator;
     private final BufferPool writeBuffers;
     private final int readBufferSize;
-    private final int maxOpenReadFilesPerThread;
-    private final int maxFdCacheTimeSeconds;
     private final int maxSaneEntrySize;
     private final Set<Integer> unflushedLogs;
 
@@ -84,25 +82,9 @@ public class DirectEntryLogger implements EntryLoggerIface {
     private List<Future<?>> pendingFlushes;
     private final NativeIO nativeIO;
     private final List<Cache<?, ?>> allCaches = new CopyOnWriteArrayList<>();
-    private final ThreadLocal<Cache<Integer, LogReader>> caches = new ThreadLocal<Cache<Integer, LogReader>>() {
-            @Override
-            public Cache<Integer, LogReader> initialValue() {
-                RemovalListener<Integer, LogReader> rl = (notification) -> {
-                    try {
-                        notification.getValue().close();
-                    } catch (IOException ioe) {
-                        slog.kv("logID", notification.getKey()).error(Events.READER_CLOSE_ERROR);
-                    }
-                };
-                Cache<Integer, LogReader> cache = CacheBuilder.newBuilder()
-                    .maximumSize(maxOpenReadFilesPerThread)
-                    .removalListener(rl)
-                    .expireAfterWrite(maxFdCacheTimeSeconds, TimeUnit.SECONDS)
-                    .build();
-                allCaches.add(cache);
-                return cache;
-            }
-        };
+    private final ThreadLocal<Cache<Integer, LogReader>> caches;
+
+    private static final int NUMBER_OF_WRITE_BUFFERS = 8;
 
     public DirectEntryLogger(File ledgerDir,
                              EntryLogIds ids,
@@ -112,9 +94,10 @@ public class DirectEntryLogger implements EntryLoggerIface {
                              ExecutorService flushExecutor,
                              long maxFileSize,
                              int maxSaneEntrySize,
-                             int writeBufferSize,
+                             long totalWriteBufferSize,
+                             long totalReadBufferSize,
                              int readBufferSize,
-                             int maxOpenReadFilesPerThread,
+                             int numReadThreads,
                              int maxFdCacheTimeSeconds,
                              Slogger slogParent,
                              StatsLogger stats) throws IOException {
@@ -127,23 +110,67 @@ public class DirectEntryLogger implements EntryLoggerIface {
 
         this.maxFileSize = maxFileSize;
         this.maxSaneEntrySize = maxSaneEntrySize;
-        this.readBufferSize = readBufferSize;
-        this.maxOpenReadFilesPerThread = maxOpenReadFilesPerThread;
-        this.maxFdCacheTimeSeconds = maxFdCacheTimeSeconds;
+        this.readBufferSize = Buffer.nextAlignment(readBufferSize);
         this.ids = ids;
         this.slog = slogParent.kv("directory", ledgerDir).ctx();
 
         this.stats = new DirectEntryLoggerStats(stats);
 
         this.allocator = allocator;
-        this.writeBuffers = new BufferPool(nativeIO, writeBufferSize, 8);
+
+        int singleWriteBufferSize = Buffer.nextAlignment((int) (totalWriteBufferSize / NUMBER_OF_WRITE_BUFFERS));
+        this.writeBuffers = new BufferPool(nativeIO, singleWriteBufferSize, NUMBER_OF_WRITE_BUFFERS);
+
+        // The total read buffer memory needs to get split across all the read threads, since the caches
+        // are thread-specific and we want to ensure we don't pass the total memory limit.
+        long perThreadBufferSize = totalReadBufferSize / numReadThreads;
+
+        // if the amount of total read buffer size is too low, and/or the number of read threads is too high
+        // then the perThreadBufferSize can be lower than the readBufferSize causing immediate eviction of readers
+        // from the cache
+        if (perThreadBufferSize < readBufferSize) {
+            slog.kv("reason", "perThreadBufferSize lower than readBufferSize (causes immediate reader cache eviction)")
+                .kv("totalReadBufferSize", totalReadBufferSize)
+                .kv("totalNumReadThreads", numReadThreads)
+                .kv("readBufferSize", readBufferSize)
+                .kv("perThreadBufferSize", perThreadBufferSize)
+                .error(Events.ENTRYLOGGER_MISCONFIGURED);
+        }
+
+        long maxCachedReadersPerThread = perThreadBufferSize / readBufferSize;
+        long maxCachedReaders = maxCachedReadersPerThread * numReadThreads;
 
         this.slog
             .kv("maxFileSize", maxFileSize)
             .kv("maxSaneEntrySize", maxSaneEntrySize)
-            .kv("writeBufferSize", writeBufferSize)
+            .kv("totalWriteBufferSize", totalWriteBufferSize)
+            .kv("singleWriteBufferSize", singleWriteBufferSize)
+            .kv("totalReadBufferSize", totalReadBufferSize)
             .kv("readBufferSize", readBufferSize)
+            .kv("perThreadBufferSize", perThreadBufferSize)
+            .kv("maxCachedReadersPerThread", maxCachedReadersPerThread)
+            .kv("maxCachedReaders", maxCachedReaders)
             .info(Events.ENTRYLOGGER_CREATED);
+
+        this.caches = ThreadLocal.withInitial(() -> {
+            RemovalListener<Integer, LogReader> rl = (notification) -> {
+                try {
+                    notification.getValue().close();
+                    this.stats.getCloseReaderCounter().inc();
+                } catch (IOException ioe) {
+                    slog.kv("logID", notification.getKey()).error(Events.READER_CLOSE_ERROR);
+                }
+            };
+            Cache<Integer, LogReader> cache = CacheBuilder.newBuilder()
+                    .maximumWeight(perThreadBufferSize)
+                    .weigher((key, value) -> readBufferSize)
+                    .removalListener(rl)
+                    .expireAfterAccess(maxFdCacheTimeSeconds, TimeUnit.SECONDS)
+                    .concurrencyLevel(1) // important to avoid too aggressive eviction
+                    .build();
+            allCaches.add(cache);
+            return cache;
+        });
     }
 
     @Override
@@ -188,7 +215,20 @@ public class DirectEntryLogger implements EntryLoggerIface {
     private LogReader getReader(int logId) throws IOException {
         Cache<Integer, LogReader> cache = caches.get();
         try {
-            return cache.get(logId, () -> newDirectReader(logId));
+            LogReader reader = cache.get(logId, () -> {
+                this.stats.getOpenReaderCounter().inc();
+                return newDirectReader(logId);
+            });
+
+            // it is possible though unlikely, that the cache has already cleaned up this cache entry
+            // during the get operation. This is more likely to happen when there is great demand
+            // for many separate readers in a low memory environment.
+            if (reader.isClosed()) {
+                this.stats.getCachedReadersServedClosedCounter().inc();
+                throw new IOException(exMsg("Cached reader already closed").kv("logId", logId).toString());
+            }
+
+            return reader;
         } catch (ExecutionException ee) {
             if (ee.getCause() instanceof IOException) {
                 throw (IOException) ee.getCause();
@@ -319,6 +359,8 @@ public class DirectEntryLogger implements EntryLoggerIface {
         for (Cache<?, ?> c : allCaches) {
             c.invalidateAll();
         }
+
+        writeBuffers.close();
     }
 
     @Override

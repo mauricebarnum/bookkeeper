@@ -84,14 +84,16 @@ public class DbLedgerStorage implements LedgerStorage {
     public static final String WRITE_CACHE_MAX_SIZE_MB = "dbStorage_writeCacheMaxSizeMb";
 
     public static final String READ_AHEAD_CACHE_MAX_SIZE_MB = "dbStorage_readAheadCacheMaxSizeMb";
+    static final String READ_AHEAD_CACHE_BATCH_SIZE = "dbStorage_readAheadCacheBatchSize";
     public static final String DIRECT_IO_ENTRYLOGGER = "dbStorage_directIOEntryLogger";
-    public static final String DIRECT_IO_ENTRYLOGGER_WRITEBUFFER_SIZE_MB =
-            "dbStorage_directIOEntryLoggerWriteBufferSizeMb";
+    public static final String DIRECT_IO_ENTRYLOGGER_TOTAL_WRITEBUFFER_SIZE_MB =
+            "dbStorage_directIOEntryLoggerTotalWriteBufferSizeMb";
+    public static final String DIRECT_IO_ENTRYLOGGER_TOTAL_READBUFFER_SIZE_MB =
+            "dbStorage_directIOEntryLoggerTotalReadBufferSizeMb";
     public static final String DIRECT_IO_ENTRYLOGGER_READBUFFER_SIZE_MB =
             "dbStorage_directIOEntryLoggerReadBufferSizeMb";
     public static final String DIRECT_IO_ENTRYLOGGER_MAX_READ_FDS_PER_THREAD =
             "dbStorage_directIOEntryLoggerMaxReadFdsPerThread";
-
     public static final String DIRECT_IO_ENTRYLOGGER_MAX_FD_CACHE_TIME_SECONDS =
             "dbStorage_directIOEntryLoggerMaxFdCacheTimeSeconds";
 
@@ -104,11 +106,16 @@ public class DbLedgerStorage implements LedgerStorage {
     private static final long DEFAULT_READ_CACHE_MAX_SIZE_MB = (long) (0.25 * PlatformDependent.maxDirectMemory())
             / MB;
 
-    static final String READ_AHEAD_CACHE_BATCH_SIZE = "dbStorage_readAheadCacheBatchSize";
     private static final int DEFAULT_READ_AHEAD_CACHE_BATCH_SIZE = 100;
-    private static final long DEFAULT_DIRECT_IO_WRITEBUFFER_SIZE_MB = 32;
-    private static final long DEFAULT_DIRECT_IO_READBUFFER_SIZE_MB = 32;
-    private static final int DEFAULT_DIRECT_IO_MAX_READ_FDS_PER_THREAD = 200;
+
+    private static final long DEFAULT_DIRECT_IO_TOTAL_WRITEBUFFER_SIZE_MB =
+            (long) (0.125 * PlatformDependent.maxDirectMemory())
+            / MB;
+    private static final long DEFAULT_DIRECT_IO_TOTAL_READBUFFER_SIZE_MB =
+            (long) (0.125 * PlatformDependent.maxDirectMemory())
+            / MB;
+    private static final long DEFAULT_DIRECT_IO_READBUFFER_SIZE_MB = 8;
+
     private static final int DEFAULT_DIRECT_IO_MAX_FD_CACHE_TIME_SECONDS = 300;
 
     // use the storage assigned to ledger 0 for flags.
@@ -179,18 +186,18 @@ public class DbLedgerStorage implements LedgerStorage {
 
             EntryLoggerIface entrylogger;
             if (directIOEntryLogger) {
-                int writeBufferSize = MB * (int) getLongVariableOrDefault(
+                long perDirectoryTotalWriteBufferSize = MB * getLongVariableOrDefault(
                         conf,
-                        DIRECT_IO_ENTRYLOGGER_WRITEBUFFER_SIZE_MB,
-                        DEFAULT_DIRECT_IO_WRITEBUFFER_SIZE_MB);
+                        DIRECT_IO_ENTRYLOGGER_TOTAL_WRITEBUFFER_SIZE_MB,
+                        DEFAULT_DIRECT_IO_TOTAL_WRITEBUFFER_SIZE_MB) / numberOfDirs;
+                long perDirectoryTotalReadBufferSize = MB * getLongVariableOrDefault(
+                        conf,
+                        DIRECT_IO_ENTRYLOGGER_TOTAL_READBUFFER_SIZE_MB,
+                        DEFAULT_DIRECT_IO_TOTAL_READBUFFER_SIZE_MB) / numberOfDirs;
                 int readBufferSize = MB * (int) getLongVariableOrDefault(
                         conf,
                         DIRECT_IO_ENTRYLOGGER_READBUFFER_SIZE_MB,
                         DEFAULT_DIRECT_IO_READBUFFER_SIZE_MB);
-                int maxReadFds = (int) getLongVariableOrDefault(
-                        conf,
-                        DIRECT_IO_ENTRYLOGGER_MAX_READ_FDS_PER_THREAD,
-                        DEFAULT_DIRECT_IO_MAX_READ_FDS_PER_THREAD);
                 int maxFdCacheTimeSeconds = (int) getLongVariableOrDefault(
                         conf,
                         DIRECT_IO_ENTRYLOGGER_MAX_FD_CACHE_TIME_SECONDS,
@@ -200,12 +207,22 @@ public class DbLedgerStorage implements LedgerStorage {
                         new DefaultThreadFactory("EntryLoggerWrite"));
                 entryLoggerFlushExecutor = Executors.newSingleThreadExecutor(
                         new DefaultThreadFactory("EntryLoggerFlush"));
+
+                int numReadThreads = conf.getNumReadWorkerThreads();
+                if (numReadThreads == 0) {
+                    numReadThreads = conf.getServerNumIOThreads();
+                }
+
                 entrylogger = new DirectEntryLogger(ledgerDir, new EntryLogIdsImpl(ledgerDirsManager, slog),
                                                     new NativeIOImpl(),
                                                     allocator, entryLoggerWriteExecutor, entryLoggerFlushExecutor,
                                                     conf.getEntryLogSizeLimit(),
                                                     conf.getNettyMaxFrameSizeBytes() - 500,
-                                                    writeBufferSize, readBufferSize, maxReadFds, maxFdCacheTimeSeconds,
+                                                    perDirectoryTotalWriteBufferSize,
+                                                    perDirectoryTotalReadBufferSize,
+                                                    readBufferSize,
+                                                    numReadThreads,
+                                                    maxFdCacheTimeSeconds,
                                                     slog, statsLogger);
             } else {
                 entrylogger = new EntryLogger(conf, ldm, null, statsLogger, allocator);

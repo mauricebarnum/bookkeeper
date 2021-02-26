@@ -45,6 +45,7 @@ class DirectReader implements LogReader {
     private long currentBlock = -1;
     private long currentBlockEnd = -1;
     private long maxOffset;
+    private boolean closed;
 
     DirectReader(int logId, String filename, ByteBufAllocator allocator,
                  NativeIO nativeIO, int bufferSize,
@@ -57,6 +58,7 @@ class DirectReader implements LogReader {
         this.readBlockStats = readBlockStats;
 
         nativeBuffer = new Buffer(nativeIO, bufferSize);
+        closed = false;
 
         try {
             fd = nativeIO.open(filename,
@@ -257,11 +259,17 @@ class DirectReader implements LogReader {
         try {
             int ret = nativeIO.close(fd);
             checkState(ret == 0, "Close should throw exception on non-zero return (%d)", ret);
+            closed = true;
         } catch (NativeIOException ne) {
             throw new IOException(exMsg(ne.getMessage())
                     .kv("file", filename)
                     .kv("errno", ne.getErrno()).toString());
         }
+    }
+
+    @Override
+    public boolean isClosed() {
+        return closed;
     }
 
     @Override

@@ -75,4 +75,6 @@ public interface LogReader extends AutoCloseable {
 
     @Override
     void close() throws IOException;
+
+    boolean isClosed();
 }

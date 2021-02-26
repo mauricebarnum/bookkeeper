@@ -84,9 +84,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      9000, // max file size (header + size of one entry)
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             long loc1 = elog.addEntry(ledgerId1, e1.slice());
@@ -121,9 +122,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      200000, // max file size (header + size of one entry)
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             long loc1 = elog.addEntry(ledgerId1, e1.slice());
@@ -152,9 +154,9 @@ public class TestDirectEntryLogger {
         File curDir = new File(ledgerDir, "current");
         curDir.mkdirs();
 
-        ByteBuf e1 = makeEntry(ledgerId1, 1L, 4000);
-        ByteBuf e2 = makeEntry(ledgerId1, 2L, 4000);
-        ByteBuf e3 = makeEntry(ledgerId1, 3L, 4000);
+        final int entrySize = Buffer.ALIGNMENT;
+        final int maxFileSize = Header.EMPTY_HEADER.length + entrySize;
+        final int maxCachedReaders = 16;
 
         AtomicInteger outstandingReaders = new AtomicInteger(0);
         EntryLoggerIface elog = new DirectEntryLogger(
@@ -163,18 +165,19 @@ public class TestDirectEntryLogger {
                      ByteBufAllocator.DEFAULT,
                      MoreExecutors.newDirectExecutorService(),
                      MoreExecutors.newDirectExecutorService(),
-                     9000, // max file size (header + size of one entry)
+                     maxFileSize,
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     4, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     maxCachedReaders * maxFileSize, // total read buffer size
+                     maxFileSize, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE) {
                 @Override
                 LogReader newDirectReader(int logId) throws IOException {
                     outstandingReaders.incrementAndGet();
                     return new DirectReader(logId, logFilename(curDir, logId), ByteBufAllocator.DEFAULT,
-                                            new NativeIOImpl(), 4096, 10 * 1024 * 1024,
+                                            new NativeIOImpl(), Buffer.ALIGNMENT, 10 * 1024 * 1024,
                                             NullStatsLogger.INSTANCE.getOpStatsLogger("")) {
                         @Override
                         public void close() throws IOException {
@@ -183,21 +186,20 @@ public class TestDirectEntryLogger {
                         }
                     };
                 }
-
             };
         try {
             List<Long> locations = new ArrayList<>();
-            for (int i = 0; i < 20; i++) {
-                ByteBuf e = makeEntry(ledgerId1, i, 4000);
+            // `+ 1` is not a typo: create one more log file than the max number of o cached readers
+            for (int i = 0; i < maxCachedReaders + 1; i++) {
+                ByteBuf e = makeEntry(ledgerId1, i, entrySize);
                 long loc = elog.addEntry(ledgerId1, e.slice());
                 locations.add(loc);
             }
             elog.flush();
-
             for (Long loc : locations) {
                 elog.readEntry(loc).release();
             }
-            assertThat(outstandingReaders.get(), equalTo(4));
+            assertThat(outstandingReaders.get(), equalTo(maxCachedReaders));
         } finally {
             elog.close();
         }
@@ -226,9 +228,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      2 << 16, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             loc1 = elog.addEntry(ledgerId1, e1);
@@ -244,9 +247,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      2 << 16, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             int logId = logIdFromLocation(loc1);
@@ -292,9 +296,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      2 << 16, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     4096, // write buffer size
-                     4096, // read buffer size
-                     8, // max cached read files
+                     1024 * 1024, // total write buffer size
+                     1024 * 1024, // total read buffer size
+                     64 * 1024, // read buffer size
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             loc1 = writer.addEntry(ledgerId1, e1);
@@ -310,9 +315,10 @@ public class TestDirectEntryLogger {
                          MoreExecutors.newDirectExecutorService(),
                          2 << 16, // max file size
                          10 * 1024 * 1024, // max sane entry size
-                         4096, // write buffer size
-                         4096, // read buffer size
-                         8, // max cached read files
+                         1024 * 1024, // total write buffer size
+                         1024 * 1024, // total read buffer size
+                         64 * 1024, // read buffer size
+                         1, // numReadThreads
                          300, // max fd cache time in seconds
                          slog, NullStatsLogger.INSTANCE)) {
                 int logId = logIdFromLocation(loc1);
@@ -349,9 +355,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      2 << 24, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     16 * 1024 * 1024, // write buffer size
+                     32 * 1024 * 1024, // total write buffer size
+                     32 * 1024 * 1024, // total read buffer size
                      16 * 1024 * 1024, // read buffer size
-                     8, // max cached read files
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             for (int i = 0; i < ledgerCount; i++) {
@@ -372,9 +379,10 @@ public class TestDirectEntryLogger {
                      MoreExecutors.newDirectExecutorService(),
                      2 << 20, // max file size
                      10 * 1024 * 1024, // max sane entry size
-                     16 * 1024 * 1024, // write buffer size
+                     32 * 1024 * 1024, // total write buffer size
+                     32 * 1024 * 1024, // total read buffer size
                      16 * 1024 * 1024, // read buffer size
-                     8, // max cached read files
+                     1, // numReadThreads
                      300, // max fd cache time in seconds
                      slog, NullStatsLogger.INSTANCE)) {
             int logId = logIdFromLocation(lastLoc);
@@ -417,9 +425,10 @@ public class TestDirectEntryLogger {
                 executor,
                 23000, // max file size
                 10 * 1024 * 1024, // max sane entry size
-                32768, // write buffer size
-                32768, // read buffer size
-                8, // max cached read files
+                1024 * 1024, // total write buffer size
+                1024 * 1024, // total read buffer size
+                32 * 1024, // read buffer size
+                1, // numReadThreads
                 300, // max fd cache time in seconds
                 slog, NullStatsLogger.INSTANCE);
         try { // not using try-with-resources because close needs to be unblocked in failure
@@ -462,6 +471,44 @@ public class TestDirectEntryLogger {
             blockClose.complete(null);
             entryLogger.close();
             executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void testBufferSizeNotPageAligned() throws Exception {
+        File ledgerDir = tmpDirs.createNew("logRolling", "ledgers");
+        File curDir = new File(ledgerDir, "current");
+        curDir.mkdirs();
+
+        ByteBuf e1 = makeEntry(ledgerId1, 1L, 4000);
+        ByteBuf e2 = makeEntry(ledgerId1, 2L, 4000);
+        ByteBuf e3 = makeEntry(ledgerId1, 3L, 4000);
+
+        try (EntryLoggerIface elog = new DirectEntryLogger(
+                curDir, new MockEntryLogIds(),
+                new NativeIOImpl(),
+                ByteBufAllocator.DEFAULT,
+                MoreExecutors.newDirectExecutorService(),
+                MoreExecutors.newDirectExecutorService(),
+                9000, // max file size (header + size of one entry)
+                10 * 1024 * 1024, // max sane entry size
+                128 * 1024 + 500, // total write buffer size
+                128 * 1024 + 300, // total read buffer size
+                64 * 1024, // read buffer size
+                1, // numReadThreads
+                300, // max fd cache time in seconds
+                slog, NullStatsLogger.INSTANCE)) {
+            long loc1 = elog.addEntry(ledgerId1, e1.slice());
+            int logId1 = logIdFromLocation(loc1);
+            assertThat(logId1, equalTo(1));
+
+            long loc2 = elog.addEntry(ledgerId1, e2.slice());
+            int logId2 = logIdFromLocation(loc2);
+            assertThat(logId2, equalTo(2));
+
+            long loc3 = elog.addEntry(ledgerId1, e3.slice());
+            int logId3 = logIdFromLocation(loc3);
+            assertThat(logId3, equalTo(3));
         }
     }
 }

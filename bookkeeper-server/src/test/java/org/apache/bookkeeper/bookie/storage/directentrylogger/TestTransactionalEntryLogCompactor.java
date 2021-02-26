@@ -547,9 +547,10 @@ public class TestTransactionalEntryLogCompactor {
                 MoreExecutors.newDirectExecutorService(),
                 2 << 20, // max file size
                 10 * 1024 * 1024, // max sane entry size
-                4096, // write buffer size
-                4096, // read buffer size
-                8, // max cached read files
+                1024 * 1024, // total write buffer size
+                1024 * 1024, // total read buffer size
+                4 * 1024, // read buffer size
+                1, // numReadThreads
                 300, // max fd cache time in seconds
                 slog, NullStatsLogger.INSTANCE) {
             @Override

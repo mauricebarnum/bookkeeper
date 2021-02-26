@@ -261,11 +261,10 @@ public class TestDirectReader {
     public void testReadEntries() throws Exception {
         File ledgerDir = tmpDirs.createNew("readEntries", "logs");
 
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
-
         int entrySize = Buffer.ALIGNMENT / 4 + 100;
         Map<Integer, Integer> offset2Pattern = new HashMap<>();
-        try (LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
+             LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
                                                  1 << 20, MoreExecutors.newDirectExecutorService(),
                                                  buffers, new NativeIOImpl(), Slogger.CONSOLE)) {
             for (int i = 0; i < 1000; i++) {
@@ -302,7 +301,6 @@ public class TestDirectReader {
     public void testReadFromFileBeingWrittenNoPreallocation() throws Exception {
         File ledgerDir = tmpDirs.createNew("readWhileWriting", "logs");
 
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
         int entrySize = Buffer.ALIGNMENT / 2 + 8;
         NativeIOImpl nativeIO = new NativeIOImpl() {
                 @Override
@@ -311,7 +309,8 @@ public class TestDirectReader {
                     return 0;
                 }
             };
-        try (LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
+             LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
                                                  1 << 20, MoreExecutors.newDirectExecutorService(),
                                                  buffers, new NativeIOImpl(), Slogger.CONSOLE);
              LogReader reader = new DirectReader(1234, logFilename(ledgerDir, 1234),
@@ -346,9 +345,10 @@ public class TestDirectReader {
     public void testReadFromFileBeingWrittenReadInPreallocated() throws Exception {
         File ledgerDir = tmpDirs.createNew("readWhileWriting", "logs");
 
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
         int entrySize = Buffer.ALIGNMENT / 2 + 8;
-        try (LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
+
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
+             LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234),
                                                  1 << 20, MoreExecutors.newDirectExecutorService(),
                                                  buffers, new NativeIOImpl(), Slogger.CONSOLE);
              LogReader reader = new DirectReader(1234, logFilename(ledgerDir, 1234),
@@ -382,7 +382,6 @@ public class TestDirectReader {
     public void testPartialRead() throws Exception {
         File ledgerDir = tmpDirs.createNew("partialRead", "logs");
 
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT * 10, 8);
         int entrySize = Buffer.ALIGNMENT * 4;
 
         NativeIOImpl nativeIO = new NativeIOImpl() {
@@ -398,7 +397,8 @@ public class TestDirectReader {
                     return 0; // don't preallocate
                 }
             };
-        try (LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234), 1 << 20,
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT * 10, 8);
+             LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234), 1 << 20,
                                                  MoreExecutors.newDirectExecutorService(),
                                                  buffers, new NativeIOImpl(), Slogger.CONSOLE)) {
             ByteBuf b1 = Unpooled.buffer(entrySize);
@@ -443,11 +443,11 @@ public class TestDirectReader {
     public void testLargeEntry() throws Exception {
         File ledgerDir = tmpDirs.createNew("largeEntries", "logs");
 
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT * 8, 8);
         int entrySize = Buffer.ALIGNMENT * 4;
 
         int offset1, offset2;
-        try (LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234), 1 << 20,
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT * 8, 8);
+             LogWriter writer = new DirectWriter(1234, logFilename(ledgerDir, 1234), 1 << 20,
                                                  MoreExecutors.newDirectExecutorService(), buffers, new NativeIOImpl(),
                                                  Slogger.CONSOLE)) {
             ByteBuf b1 = Unpooled.buffer(entrySize);
@@ -490,8 +490,8 @@ public class TestDirectReader {
 
     private static void writeFileWithPattern(File directory, int logId,
                                              int pattern, int blockIncrement, int fileSize) throws Exception {
-        BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
-        try (LogWriter writer = new DirectWriter(logId, logFilename(directory, logId),
+        try (BufferPool buffers = new BufferPool(new NativeIOImpl(), Buffer.ALIGNMENT, 8);
+             LogWriter writer = new DirectWriter(logId, logFilename(directory, logId),
                                                  fileSize, MoreExecutors.newDirectExecutorService(),
                                                  buffers, new NativeIOImpl(), Slogger.CONSOLE)) {
 
