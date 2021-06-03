@@ -109,5 +109,17 @@
         <cpe>cpe:/a:redhat:docker</cpe>
     </suppress>
 
+    <!--
+        owasp dependency checker erroneously lumps bookeeper-slogger-slf4j.jar into the set of jars
+        from upstream affected by CVS-2019-17571
+    -->
+    <suppress>
+       <notes><![CDATA[
+       file name: bookkeeper-slogger-slf4j.jar
+       ]]></notes>
+       <packageUrl regex="true">^pkg:maven/bookkeeper\.bookkeeper\-slogger/slf4j@.*$</packageUrl>
+       <cve>CVE-2019-17571</cve>
+    </suppress>
+
 </suppressions>
 
